@@ -18,6 +18,15 @@ class App extends StatelessWidget {
         // Using theme system from US3
         scaffoldBackgroundColor: AppColors.background,
         useMaterial3: true,
+        // Disable implicit text animations to prevent fade effects
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          },
+        ),
+        // Set animation duration to zero for text
+        textTheme: const TextTheme(),
       ),
     );
   }

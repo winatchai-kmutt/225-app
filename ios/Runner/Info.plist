@@ -45,5 +45,7 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>We need permission to send you notifications when your Pomodoro timer completes, so you know when it's time for a break.</string>
 </dict>
 </plist>

@@ -29,6 +29,15 @@ class AppTextStyles {
   // Prevent instantiation
   AppTextStyles._();
 
+  /// Display Large text style - Bold 48
+  /// Used for: Timer countdown display, very large numbers
+  static TextStyle get displayLarge => GoogleFonts.inter(
+        fontSize: 48,
+        fontWeight: FontWeight.w700, // Bold
+        color: AppColors.textPrimary,
+        height: 1.1,
+      );
+
   /// Display text style - Bold 28
   /// Used for: Large headings, important titles
   static TextStyle get display => GoogleFonts.inter(

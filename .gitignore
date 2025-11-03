@@ -32,6 +32,14 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+*.g.dart
+*.freezed.dart
+*.mocks.dart
+
+# Environment
+.env
+.env.*
+!.env.example
 
 # Symbolication related
 app.*.symbols

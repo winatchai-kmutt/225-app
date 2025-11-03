@@ -156,14 +156,30 @@ class BackgroundTimerService with WidgetsBindingObserver {
   /// Cancel the currently active timer.
   Future<void> cancelTimer() async {
     if (_currentSession != null) {
+      // Cancel BOTH notification systems
+      
+      // 1. Cancel Android AlarmManager (if available)
+      try {
+        await AlarmNotificationService.cancel();
+      } catch (e) {
+        // iOS or AlarmManager not available - skip silently
+      }
+      
+      // 2. Cancel flutter_local_notifications (both Android & iOS)
+      await _notificationService.cancelAllNotifications();
+      
+      // 3. Update state
       _currentSession = _currentSession!.copyWith(
         currentState: TimerState.cancelled,
       );
+      
+      // 4. Clear persistence
       await _persistenceRepo.clearTimerSession();
-      await _notificationService.cancelAllNotifications();
+      
+      // 5. Stop UI updates
       _stopUiUpdateTimer();
       
-      // Notify listeners
+      // 6. Notify listeners
       onTimerStateChanged?.call(null);
       _currentSession = null;
     }

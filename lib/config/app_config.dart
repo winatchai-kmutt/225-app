@@ -45,7 +45,7 @@ class AppConfig {
   /// Work session duration (Pomodoro)
   static Duration get workDuration => 
     current.useDebugTimerDurations
-      ? const Duration(minutes: 1)   // Debug: 1 minute for quick testing
+      ? const Duration(seconds: 10)   // Debug: 1 minute for quick testing
       : const Duration(minutes: 25); // Production: 25 minutes
   
   /// Short break duration

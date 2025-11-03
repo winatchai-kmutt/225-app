@@ -21,23 +21,25 @@ import 'timer_state.dart';
 class TimerCubit extends Cubit<TimerCubitState> with WidgetsBindingObserver {
   final TimerPersistenceRepo _persistenceRepo;
   final BackgroundTimerService _backgroundTimerService;
-  
+
   Timer? _timer;
   DateTime? _startTime;
   Duration? _remainingDuration; // Remaining time for current countdown
-  Duration? _totalDuration;      // Original duration for progress calculation
+  Duration? _totalDuration; // Original duration for progress calculation
   SessionType _currentSessionType = SessionType.work;
   bool _isRestoringState = false;
-  
+
   TimerCubit({
     required TimerPersistenceRepo persistenceRepo,
     required BackgroundTimerService backgroundTimerService,
-  })  : _persistenceRepo = persistenceRepo,
-        _backgroundTimerService = backgroundTimerService,
-        super(TimerInitialState(
-          totalDuration: AppConfig.workDuration,
-          sessionType: SessionType.work,
-        )) {
+  }) : _persistenceRepo = persistenceRepo,
+       _backgroundTimerService = backgroundTimerService,
+       super(
+         TimerInitialState(
+           totalDuration: AppConfig.workDuration,
+           sessionType: SessionType.work,
+         ),
+       ) {
     WidgetsBinding.instance.addObserver(this);
     _initializeFromPersistence();
   }
@@ -45,35 +47,38 @@ class TimerCubit extends Cubit<TimerCubitState> with WidgetsBindingObserver {
   /// Initialize timer state from persistence on app startup
   Future<void> _initializeFromPersistence() async {
     _isRestoringState = true;
-    
+
     try {
       final session = await _persistenceRepo.loadTimerSession();
-      
-      if (session != null && session.currentState == storage.TimerState.running) {
+
+      if (session != null &&
+          session.currentState == storage.TimerState.running) {
         // Restore running timer
         _startTime = session.startTimestamp;
         _totalDuration = session.totalDuration;
         _remainingDuration = session.totalDuration;
         _currentSessionType = _convertStorageSessionType(session.sessionType);
-        
+
         // Calculate current remaining time
-        final remaining = _backgroundTimerService.calculateRemainingTime(session);
-        
+        final remaining = _backgroundTimerService.calculateRemainingTime(
+          session,
+        );
+
         if (remaining.isNegative || remaining.inSeconds <= 0) {
           // Timer completed while app was closed
           await _persistenceRepo.clearTimerSession();
-          emit(TimerCompletedState(
-            completedSessionType: _currentSessionType,
-          ));
+          emit(TimerCompletedState(completedSessionType: _currentSessionType));
         } else {
           // Timer still running - restore state
           final progress = remaining.inSeconds / _totalDuration!.inSeconds;
-          emit(TimerRunningState(
-            remaining: remaining,
-            progress: progress.clamp(0.0, 1.0),
-            sessionType: _currentSessionType,
-          ));
-          
+          emit(
+            TimerRunningState(
+              remaining: remaining,
+              progress: progress.clamp(0.0, 1.0),
+              sessionType: _currentSessionType,
+            ),
+          );
+
           // Start local timer for UI updates
           _startTimer();
         }
@@ -110,27 +115,29 @@ class TimerCubit extends Cubit<TimerCubitState> with WidgetsBindingObserver {
   /// Start the timer countdown
   Future<void> start() async {
     final currentState = state;
-    
+
     if (currentState is TimerInitialState) {
       _remainingDuration = currentState.totalDuration;
       _totalDuration = currentState.totalDuration;
       _currentSessionType = currentState.sessionType;
-      
+
       // Start timer via BackgroundTimerService
       final session = await _backgroundTimerService.startTimer(
         duration: currentState.totalDuration,
         sessionType: _convertToStorageSessionType(currentState.sessionType),
       );
-      
+
       _startTime = session.startTimestamp;
-      
+
       // Emit immediately for instant UI feedback
-      emit(TimerRunningState(
-        remaining: currentState.totalDuration,
-        progress: 1.0,
-        sessionType: currentState.sessionType,
-      ));
-      
+      emit(
+        TimerRunningState(
+          remaining: currentState.totalDuration,
+          progress: 1.0,
+          sessionType: currentState.sessionType,
+        ),
+      );
+
       // Start local timer for UI updates
       _startTimer();
     } else if (currentState is TimerPausedState) {
@@ -139,40 +146,52 @@ class TimerCubit extends Cubit<TimerCubitState> with WidgetsBindingObserver {
       // Keep original totalDuration for progress calculation
       _currentSessionType = currentState.sessionType;
       _startTime = DateTime.now();
-      
+
+      // Start timer via BackgroundTimerService
+      await _backgroundTimerService.startTimer(
+        duration: currentState.remaining,
+        sessionType: _convertToStorageSessionType(currentState.sessionType),
+      );
+
       // Emit immediately for instant UI feedback
-      emit(TimerRunningState(
-        remaining: currentState.remaining,
-        progress: currentState.progress,
-        sessionType: currentState.sessionType,
-      ));
-      
+      emit(
+        TimerRunningState(
+          remaining: currentState.remaining,
+          progress: currentState.progress,
+          sessionType: currentState.sessionType,
+        ),
+      );
+
       // Start local timer for UI updates
       _startTimer();
     }
   }
 
   /// Pause the timer countdown
-  void pause() {
+  void pause() async {
     final currentState = state;
-    
+
+    await _backgroundTimerService.cancelTimer();
+
     if (currentState is TimerRunningState) {
       _timer?.cancel();
       _timer = null;
-      
+
       // Use the current state's remaining time to avoid calculation drift
       // This ensures the paused time matches what user sees on screen
       final remaining = currentState.remaining;
       final progress = currentState.progress;
-      
+
       // Update _remainingDuration for resume
       _remainingDuration = remaining;
-      
-      emit(TimerPausedState(
-        remaining: remaining,
-        progress: progress,
-        sessionType: currentState.sessionType,
-      ));
+
+      emit(
+        TimerPausedState(
+          remaining: remaining,
+          progress: progress,
+          sessionType: currentState.sessionType,
+        ),
+      );
     }
   }
 
@@ -183,50 +202,50 @@ class TimerCubit extends Cubit<TimerCubitState> with WidgetsBindingObserver {
     _startTime = null;
     _remainingDuration = null;
     _totalDuration = null;
-    
+
     // Cancel background timer and clear persistence
     await _backgroundTimerService.cancelTimer();
-    
+
     final currentState = state;
     final sessionType = _getSessionType(currentState);
-    
-    emit(TimerInitialState(
-      totalDuration: _getDurationForSessionType(sessionType),
-      sessionType: sessionType,
-    ));
+
+    emit(
+      TimerInitialState(
+        totalDuration: _getDurationForSessionType(sessionType),
+        sessionType: sessionType,
+      ),
+    );
   }
 
   /// Skip the current timer and immediately complete
-  /// 
+  ///
   /// Transitions from any state (Initial/Running/Paused) to Completed state.
   /// Triggers the same completion flow as natural countdown.
   Future<void> skip() async {
     _timer?.cancel();
     _timer = null;
-    
+
     // Cancel background timer and clear persistence
     await _backgroundTimerService.cancelTimer();
-    
+
     final currentState = state;
     final sessionType = _getSessionType(currentState);
-    
-    emit(TimerCompletedState(
-      completedSessionType: sessionType,
-    ));
+
+    emit(TimerCompletedState(completedSessionType: sessionType));
   }
 
   /// Start the periodic timer
   void _startTimer() {
     _timer?.cancel();
-    
+
     // Calculate time until next whole second for smooth countdown
     final now = DateTime.now();
     final millisUntilNextSecond = 1000 - now.millisecond;
-    
+
     // First tick at the next whole second
     _timer = Timer(Duration(milliseconds: millisUntilNextSecond), () {
       _tick();
-      
+
       // Then continue ticking every second
       _timer = Timer.periodic(const Duration(seconds: 1), (_) {
         _tick();
@@ -237,20 +256,22 @@ class TimerCubit extends Cubit<TimerCubitState> with WidgetsBindingObserver {
   /// Timer tick - calculate remaining time using DateTime
   void _tick() {
     if (_startTime == null || _remainingDuration == null) return;
-    
+
     final elapsed = DateTime.now().difference(_startTime!);
     final remaining = _remainingDuration! - elapsed;
-    
+
     if (remaining.isNegative || remaining.inSeconds <= 0) {
       _onComplete();
     } else {
       final progress = remaining.inSeconds / _totalDuration!.inSeconds;
-      
-      emit(TimerRunningState(
-        remaining: remaining,
-        progress: progress.clamp(0.0, 1.0),
-        sessionType: _currentSessionType,
-      ));
+
+      emit(
+        TimerRunningState(
+          remaining: remaining,
+          progress: progress.clamp(0.0, 1.0),
+          sessionType: _currentSessionType,
+        ),
+      );
     }
   }
 
@@ -258,16 +279,14 @@ class TimerCubit extends Cubit<TimerCubitState> with WidgetsBindingObserver {
   void _onComplete() {
     _timer?.cancel();
     _timer = null;
-    
+
     // Clear persisted session
     _persistenceRepo.clearTimerSession();
-    
+
     final currentState = state;
     final sessionType = _getSessionType(currentState);
-    
-    emit(TimerCompletedState(
-      completedSessionType: sessionType,
-    ));
+
+    emit(TimerCompletedState(completedSessionType: sessionType));
   }
 
   /// Get session type from current state
@@ -298,7 +317,7 @@ class TimerCubit extends Cubit<TimerCubitState> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
     super.didChangeAppLifecycleState(lifecycleState);
-    
+
     if (lifecycleState == AppLifecycleState.resumed) {
       _handleAppResumed();
     } else if (lifecycleState == AppLifecycleState.paused) {
@@ -309,9 +328,9 @@ class TimerCubit extends Cubit<TimerCubitState> with WidgetsBindingObserver {
   /// Persist timer state when app goes to background
   Future<void> _handleAppPaused() async {
     if (_isRestoringState) return;
-    
+
     final currentState = state;
-    
+
     // Only persist if timer is running
     if (currentState is TimerRunningState && _startTime != null) {
       final session = storage.TimerSession(
@@ -321,7 +340,7 @@ class TimerCubit extends Cubit<TimerCubitState> with WidgetsBindingObserver {
         startTimestamp: _startTime!,
         currentState: storage.TimerState.running,
       );
-      
+
       await _persistenceRepo.saveTimerSession(session);
     }
   }
@@ -329,18 +348,18 @@ class TimerCubit extends Cubit<TimerCubitState> with WidgetsBindingObserver {
   /// Recalculate remaining time when app is resumed
   Future<void> _handleAppResumed() async {
     if (_isRestoringState) return;
-    
+
     final currentState = state;
-    
+
     // Only recalculate if timer was running
     if (currentState is! TimerRunningState) return;
-    
+
     // Try to get session from BackgroundTimerService
     final session = await _backgroundTimerService.getCurrentSession();
-    
+
     if (session != null) {
       final remaining = _backgroundTimerService.calculateRemainingTime(session);
-      
+
       if (remaining.isNegative || remaining.inSeconds <= 0) {
         // Timer completed while in background
         _onComplete();
@@ -349,14 +368,16 @@ class TimerCubit extends Cubit<TimerCubitState> with WidgetsBindingObserver {
         _startTime = session.startTimestamp;
         _remainingDuration = session.totalDuration;
         _totalDuration = session.totalDuration;
-        
+
         final progress = remaining.inSeconds / _totalDuration!.inSeconds;
-        
-        emit(TimerRunningState(
-          remaining: remaining,
-          progress: progress.clamp(0.0, 1.0),
-          sessionType: _currentSessionType,
-        ));
+
+        emit(
+          TimerRunningState(
+            remaining: remaining,
+            progress: progress.clamp(0.0, 1.0),
+            sessionType: _currentSessionType,
+          ),
+        );
       }
     }
   }
